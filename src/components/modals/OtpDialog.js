@@ -69,34 +69,47 @@ function OtpDialog({ open, onClose, onVerified, initialChannel = null }) {
   };
 
   const handleVerify = async () => {
-    if (!otp || otp.trim().length === 0) {
-      setError("Enter the OTP before verifying.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    setInfo("");
-    try {
-      // backend assumed to accept { code: "..." } and return { token: "..." } on success
-      const res = await client.post("/users/switch-role/verify-otp", { code: otp.trim() });
-      if (res?.data?.token) {
-        setInfo("OTP verified.");
-        onVerified(res.data.token);
-        onClose();
-      } else {
-        // if your API returns success differently, adapt here
-        setError("Verification failed. Please try again.");
-      }
-    } catch (e) {
-      console.error("OTP verify failed:", e);
-      // Give friendly message if server reports invalid code
-      const msg = e?.response?.data || e?.message || "Verification failed";
-      setError(String(msg));
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!otp || otp.trim().length === 0) {
+    setError("Enter the OTP before verifying.");
+    return;
+  }
+  if (!selectedChannel) {
+    setError("Please select a delivery channel.");
+    return;
+  }
+  setLoading(true);
+  setError("");
+  setInfo("");
+  try {
+    const token = localStorage.getItem("token");
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    // send OTP as request param (matches your @RequestParam in controller)
+    const res = await client.post(
+      `/users/switch-role/verify?code=${encodeURIComponent(otp.trim())}`,
+      null,
+      config
+    );
 
+    if (res?.data?.token) {
+      setInfo("OTP verified.");
+      onVerified(res.data.token);
+      onClose();
+    } else if (res?.status === 200) {
+      setInfo("OTP verified.");
+      onVerified(res.data.token || "");
+      onClose();
+    } else {
+      setError("Verification failed. Please try again.");
+    }
+  } catch (e) {
+    console.error("OTP verify failed:", e);
+    const resp = e?.response;
+    const serverMsg = resp?.data ?? resp?.statusText ?? e?.message;
+    setError(`Verify failed: ${JSON.stringify(serverMsg)}`);
+  } finally {
+    setLoading(false);
+  }
+};
   const isChannelChosen = !!selectedChannel;
 
   return (
